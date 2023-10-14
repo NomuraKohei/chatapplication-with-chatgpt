@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { OpenAIStream, OpenAIStreamPayload } from "../../../utils/open-ai-streaming";
 
 if (!process.env.NEXT_PUBLIC_OPENAI_KEY) {

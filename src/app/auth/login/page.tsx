@@ -1,7 +1,5 @@
 "use client";
 
-export const runtime = "edge";
-
 import { signInWithEmailAndPassword } from "firebase/auth";
 import React from "react";
 import { useForm, SubmitHandler } from "react-hook-form";
