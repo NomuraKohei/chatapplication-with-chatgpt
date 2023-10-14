@@ -45,6 +45,9 @@ const Sidebar = () => {
             name: doc.data().name,
             createdAt: doc.data().createdAt,
           }));
+          if (!newRooms.length) {
+            return;
+          }
           setRooms(newRooms);
           setSelectedRoom(newRooms[0].id);
           setSelectRoomName(newRooms[0].name);
