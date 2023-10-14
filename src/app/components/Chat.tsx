@@ -9,12 +9,10 @@ import {
   query,
   serverTimestamp,
 } from "firebase/firestore";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FaPaperPlane } from "react-icons/fa";
 import { db } from "../../../firebase";
 import { useAppContext } from "@/context/AppContext";
-import OpenAI from "openai";
-import LoadingIcons from "react-loading-icons";
 
 type Message = {
   text: string;
@@ -23,15 +21,80 @@ type Message = {
 };
 
 const Chat = () => {
-  const openai = new OpenAI({
-    apiKey: process.env.NEXT_PUBLIC_OPENAI_KEY,
-    dangerouslyAllowBrowser: true,
-  });
-
   const { selectedRoom, selectRoomName } = useAppContext();
-  const [inputMessage, setInputMessage] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  const [input, setInput] = useState("");
+  const [response, setResponse] = useState("");
+  const [isDone, setIsDone] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    const messageData = {
+      text: input,
+      sender: "user",
+      createdAt: serverTimestamp(),
+    };
+
+    //  メッセージをFirestoreに保存
+    const roomDocRef = doc(db, "rooms", selectedRoom!);
+    const messageCollectionRef = collection(roomDocRef, "messages");
+    await addDoc(messageCollectionRef, messageData);
+
+    const res = await fetch("/api/response", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prompt: input }),
+    });
+
+    setInput("");
+
+    if (!res.ok) {
+      throw new Error(res.statusText);
+    }
+
+    const data = res.body;
+    if (!data) return;
+
+    const reader = data.getReader();
+    const decoder = new TextDecoder();
+    let done = false;
+
+    while (!done) {
+      const { value, done: doneReading } = await reader.read();
+      done = doneReading;
+      const chunkValue = decoder.decode(value);
+      setResponse((prev) => prev + chunkValue);
+    }
+    setIsDone(true);
+  };
+
+  const sendGptMessage = useCallback(async () => {
+    const roomDocRef = doc(db, "rooms", selectedRoom!);
+    const messageCollectionRef = collection(roomDocRef, "messages");
+
+    await addDoc(messageCollectionRef, {
+      text: response,
+      sender: "bot",
+      createdAt: serverTimestamp(),
+    });
+
+    setIsDone(false);
+    setResponse("");
+    setIsLoading(false);
+  }, [response, selectedRoom]);
+
+  useEffect(() => {
+    if (!isDone) {
+      return;
+    }
+    sendGptMessage();
+  }, [isDone, sendGptMessage]);
 
   const scrollDiv = useRef<HTMLDivElement>(null);
 
@@ -64,79 +127,82 @@ const Chat = () => {
         top: element.scrollHeight,
       });
     }
-  }, [messages]);
+  }, [response, messages]);
+  //   if (!inputMessage.trim()) return;
 
-  const sendMessage = async () => {
-    if (!inputMessage.trim()) return;
+  //   const messageData = {
+  //     text: inputMessage,
+  //     sender: "user",
+  //     createdAt: serverTimestamp(),
+  //   };
 
-    const messageData = {
-      text: inputMessage,
-      sender: "user",
-      createdAt: serverTimestamp(),
-    };
+  //   //  メッセージをFirestoreに保存
+  //   const roomDocRef = doc(db, "rooms", selectedRoom!);
+  //   const messageCollectionRef = collection(roomDocRef, "messages");
+  //   await addDoc(messageCollectionRef, messageData);
 
-    //  メッセージをFirestoreに保存
-    const roomDocRef = doc(db, "rooms", selectedRoom!);
-    const messageCollectionRef = collection(roomDocRef, "messages");
-    await addDoc(messageCollectionRef, messageData);
+  //   setInputMessage("");
+  //   setIsLoading(true);
 
-    setInputMessage("");
-    setIsLoading(true);
+  //   // OpenAIからの返信
+  //   const gpt3Response = await openai.chat.completions.create({
+  //     messages: [{ role: "user", content: inputMessage }],
+  //     model: "gpt-3.5-turbo",
+  //   });
 
-    // OpenAIからの返信
-    const gpt3Response = await openai.chat.completions.create({
-      messages: [{ role: "user", content: inputMessage }],
-      model: "gpt-3.5-turbo",
-    });
+  //   setIsLoading(false);
 
-    setIsLoading(false);
-
-    const botResponse = gpt3Response.choices[0].message.content;
-    await addDoc(messageCollectionRef, {
-      text: botResponse,
-      sender: "bot",
-      createdAt: serverTimestamp(),
-    });
-  };
+  //   const botResponse = gpt3Response.choices[0].message.content;
+  //   await addDoc(messageCollectionRef, {
+  //     text: botResponse,
+  //     sender: "bot",
+  //     createdAt: serverTimestamp(),
+  //   });
+  // };
 
   return (
-    <div className="bg-gray-500 h-full p-4 flex flex-col">
-      <h1 className="text-2xl text-white font-semibold mb-4">{selectRoomName}</h1>
-      <div className="flex-grow overflow-y-auto mb-4" ref={scrollDiv}>
-        {messages.map((message, index) => (
-          <div key={index} className={message.sender === "user" ? "text-right" : "text-left"}>
-            <div
-              className={
-                message.sender === "user"
-                  ? "bg-blue-500 inline-block rounded px-4 py-2 mb-2"
-                  : "bg-green-500 inline-block rounded px-4 py-2 mb-2"
-              }
-            >
-              <p className="text-white font-medium">{message.text}</p>
+    <div className="bg-gray-800 h-full p-4 flex flex-col">
+      <h1 className="text-md text-white mb-4  text-center">{selectRoomName}</h1>
+      <div className="flex-grow overflow-y-auto mb-4 " ref={scrollDiv}>
+        {messages.map(
+          (message, index) =>
+            message.text !== response && (
+              <div key={index} className={message.sender === "user" ? "text-right" : "text-left"}>
+                <div
+                  className={
+                    message.sender === "user"
+                      ? "bg-gray-900 inline-block rounded px-4 py-2 mb-2"
+                      : "bg-gray-700 inline-block rounded px-4 py-2 mb-2"
+                  }
+                >
+                  <p className="text-white font-medium">{message.text}</p>
+                </div>
+              </div>
+            )
+        )}
+        {(response || isLoading) && (
+          <div key={messages.length} className="text-left">
+            <div className="bg-gray-700 inline-block rounded px-4 py-2 mb-2">
+              <p className="text-white font-medium">
+                {response}
+                {!isDone && "●"}
+              </p>
             </div>
           </div>
-        ))}
-        {isLoading && <LoadingIcons.TailSpin />}
+        )}
       </div>
       <div className="flex-shrink-0 relative">
-        <input
-          type="text"
-          placeholder="Send a Message"
-          className="border-2 rounded w-full pr-10 focus:outline-none p-2"
-          onChange={(e) => setInputMessage(e.target.value)}
-          value={inputMessage}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              sendMessage();
-            }
-          }}
-        />
-        <button
-          className="absolute inset-y-0 right-4 flex items-center"
-          onClick={() => sendMessage()}
-        >
-          <FaPaperPlane />
-        </button>
+        <form onSubmit={handleSubmit}>
+          <textarea
+            value={input}
+            placeholder="Send a Message"
+            onChange={(e) => setInput(e.target.value)}
+            className="border-2 rounded w-full pr-10 focus:outline-none p-2 resize-none"
+          ></textarea>
+          <button className="absolute inset-y-0 right-4 flex items-center" disabled={isLoading}>
+            {isLoading ? "Loading..." : <FaPaperPlane />}
+          </button>
+        </form>
       </div>
     </div>
   );

@@ -25,18 +25,29 @@ const Sidebar = () => {
   const { user, userId, setSelectedRoom, setSelectRoomName } = useAppContext();
   const [rooms, setRooms] = useState<Room[]>();
 
+  const selectRoom = (roomId: string, roomName: string) => {
+    setSelectedRoom(roomId);
+    setSelectRoomName(roomName);
+  };
+
   useEffect(() => {
     if (user) {
       const fetchRooms = async () => {
         const roomCollectionRef = collection(db, "rooms");
-        const q = query(roomCollectionRef, where("userId", "==", userId), orderBy("createdAt"));
+        const q = query(
+          roomCollectionRef,
+          where("userId", "==", userId),
+          orderBy("createdAt", "desc")
+        );
         const unsubscribe = onSnapshot(q, (snapshot) => {
-          const newRooms: any = snapshot.docs.map((doc) => ({
+          const newRooms: Room[] = snapshot.docs.map((doc) => ({
             id: doc.id,
             name: doc.data().name,
             createdAt: doc.data().createdAt,
           }));
           setRooms(newRooms);
+          setSelectedRoom(newRooms[0].id);
+          setSelectRoomName(newRooms[0].name);
         });
 
         return () => {
@@ -45,12 +56,7 @@ const Sidebar = () => {
       };
       fetchRooms();
     }
-  }, [user, userId]);
-
-  const selectRoom = (roomId: string, roomName: string) => {
-    setSelectedRoom(roomId);
-    setSelectRoomName(roomName);
-  };
+  }, [user, userId, setSelectedRoom, setSelectRoomName]);
 
   const addNewRoom = async () => {
     const roomName = prompt("ルーム名を入力してください。");
@@ -69,20 +75,20 @@ const Sidebar = () => {
   };
 
   return (
-    <div className="bg-custom-blue h-full overflow-y-auto px-5 flex flex-col">
-      <div className="flex-grow">
+    <div className="bg-gray-900 h-full overflow-y-auto flex flex-col">
+      <div className="flex-grow px-4">
         <div
           onClick={addNewRoom}
-          className="flex justify-evenly items-center border mt-2 rounded-md hover:bg-blue-800 duration-150"
+          className="flex justify-center items-center border mt-4 mb-4 p-2 rounded-md hover:bg-slate-700 duration-150 cursor-pointer"
         >
-          <span className="text-white p-4 text-2xl">+</span>
-          <h1 className="text-white text-xl font-semibold p-4">New Chat</h1>
+          <span className="text-white text-md">+</span>
+          <h1 className="text-white text-md ml-4">New Chat</h1>
         </div>
         <ul>
           {rooms?.map((room) => (
             <li
               key={room.id}
-              className="cursor-pointer border-b p-4 text-slate-100 hover:bg-slate-700 duration-150"
+              className="cursor-pointer p-4 text-slate-100 hover:bg-slate-700 duration-150 rounded-md"
               onClick={() => selectRoom(room.id, room.name)}
             >
               {room.name}
@@ -90,13 +96,17 @@ const Sidebar = () => {
           ))}
         </ul>
       </div>
-      {user && <div className="mb-2 p-4 text-slate-100 text-lg font-medium">{user.email}</div>}
-      <div
-        onClick={handleLogout}
-        className="text-lg flex items-center justify-evenly mb-2 cursor-pointer p-4 text-slate-100 hover:bg-slate-700 duration-150"
-      >
-        <BiLogOut />
-        <span>ログアウト</span>
+      <div className="border-t border-gray-700">
+        <div className="p-6">
+          {user && <div className="mb-4  text-slate-100 text-sm font-medium">{user.email}</div>}
+          <button
+            onClick={handleLogout}
+            className="text-md flex w-full py-2 items-center mb-4 cursor-pointer rounded-md text-slate-100 hover:bg-slate-700 duration-150"
+          >
+            <BiLogOut />
+            <span className="ml-2">ログアウト</span>
+          </button>
+        </div>
       </div>
     </div>
   );
