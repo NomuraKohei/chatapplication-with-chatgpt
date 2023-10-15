@@ -10,9 +10,13 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FaPaperPlane } from "react-icons/fa";
+import { IoMdSend } from "react-icons/io";
 import { db } from "../../../firebase";
 import { useAppContext } from "@/context/AppContext";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
 
 type Message = {
   text: string;
@@ -49,7 +53,9 @@ const Chat = () => {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ prompt: input }),
+      body: JSON.stringify({
+        prompt: `次のテキストに対する回答をマークダウン形式で教えてください。回答という文字は表示しないでください。オウムがえしはしないで下さい。テキスト:"""${input}"""`,
+      }),
     });
 
     setInput("");
@@ -171,11 +177,18 @@ const Chat = () => {
                 <div
                   className={
                     message.sender === "user"
-                      ? "bg-gray-900 inline-block rounded px-4 py-2 mb-2"
-                      : "bg-gray-700 inline-block rounded px-4 py-2 mb-2"
+                      ? "bg-gray-900 inline-block rounded px-4 py-4 mb-2"
+                      : "bg-gray-700 inline-block rounded px-4 py-4 mb-2"
                   }
                 >
-                  <p className="text-white font-medium">{message.text}</p>
+                  <div className="text-white font-medium markdown">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                    >
+                      {message.text}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               </div>
             )
@@ -183,10 +196,12 @@ const Chat = () => {
         {(response || isLoading) && (
           <div key={messages.length} className="text-left">
             <div className="bg-gray-700 inline-block rounded px-4 py-2 mb-2">
-              <p className="text-white font-medium">
-                {response}
-                {!isDone && "●"}
-              </p>
+              <div className="text-white font-medium markdown">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                >{`${response}${!isDone ? "●" : ""}`}</ReactMarkdown>
+              </div>
             </div>
           </div>
         )}
@@ -200,7 +215,7 @@ const Chat = () => {
             className="border-2 rounded w-full pr-10 focus:outline-none p-2 resize-none"
           ></textarea>
           <button className="absolute inset-y-0 right-4 flex items-center" disabled={isLoading}>
-            {isLoading ? "Loading..." : <FaPaperPlane />}
+            {isLoading ? "Loading..." : <IoMdSend />}
           </button>
         </form>
       </div>
