@@ -17,6 +17,8 @@ import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { materialDark, materialLight } from "react-syntax-highlighter/dist/cjs/styles/prism";
 
 type Message = {
   text: string;
@@ -185,6 +187,34 @@ const Chat = () => {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[rehypeKatex]}
+                      components={{
+                        code: ({ node, className, style, children, ref, ...props }) => {
+                          const match = /language-(\w+)/.exec(className || "");
+                          return match ? (
+                            <div className="my-4 rounded">
+                              <div
+                                className="flex items-center relative text-gray-200 bg-gray-800 gizmo:dark:bg-token-surface-primary px-4 py-2 text-xs font-sans justify-between rounded-t-md"
+                                style={{ marginBottom: 0 }}
+                              >
+                                <span>{match[1]}</span>
+                              </div>
+                              <SyntaxHighlighter
+                                style={materialDark}
+                                language={match[1]}
+                                PreTag="div"
+                                customStyle={{ marginTop: 0, backgroundColor: "rgb(17, 24, 39)" }}
+                                {...props}
+                              >
+                                {String(children).replace(/\n$/, "")}
+                              </SyntaxHighlighter>
+                            </div>
+                          ) : (
+                            <code className={className} {...props}>
+                              {children}
+                            </code>
+                          );
+                        },
+                      }}
                     >
                       {message.text}
                     </ReactMarkdown>

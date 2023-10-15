@@ -23,6 +23,10 @@ body {
   @apply list-disc pl-4;
 }
 
+.markdown table {
+  @apply rounded;
+}
+
 .markdown th {
   background-color: rgba(236, 236, 241, 0.2);
   border-width: 1px;
@@ -38,6 +42,15 @@ body {
   border-left-width: 1px;
   border-right-width: 1px;
   padding: 0.25rem 0.75rem;
+}
+
+.markdown pre > div > div + div {
+  border-bottom-right-radius: 0.25rem !important;
+  border-bottom-left-radius: 0.25rem !important;
+}
+
+.markdown code {
+  background-color: transparent !important;
 }
 
 .markdown *:not(:last-child) {
