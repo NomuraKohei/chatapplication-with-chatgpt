@@ -18,7 +18,9 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { materialDark, materialLight } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import { materialDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import OpenAI from "openai";
+import LoadingIcons from "react-loading-icons";
 
 type Message = {
   text: string;
@@ -30,17 +32,30 @@ const Chat = () => {
   const { selectedRoom, selectRoomName } = useAppContext();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [relatedWords, setRelatedWords] = useState<string[]>([]);
 
   const [input, setInput] = useState("");
   const [response, setResponse] = useState("");
   const [isDone, setIsDone] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const textAreaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    const element = textAreaRef.current;
+    if (!element) {
+      return;
+    }
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight + 4}px`;
+  };
+
+  const sendToGPT = async (inputText?: string) => {
     setIsLoading(true);
+    setRelatedWords([]);
 
     const messageData = {
-      text: input,
+      text: inputText || input,
       sender: "user",
       createdAt: serverTimestamp(),
     };
@@ -56,7 +71,9 @@ const Chat = () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        prompt: `次のテキストに対する回答をマークダウン形式で教えてください。回答という文字は表示しないでください。オウムがえしはしないで下さい。テキスト:"""${input}"""`,
+        prompt: `次のテキストに対する回答をマークダウン形式で教えてください。回答という文字は表示しないでください。オウムがえしはしないで下さい。テキスト:"""${
+          inputText || input
+        }"""`,
       }),
     });
 
@@ -80,6 +97,41 @@ const Chat = () => {
       setResponse((prev) => prev + chunkValue);
     }
     setIsDone(true);
+
+    const openai = new OpenAI({
+      apiKey: process.env.NEXT_PUBLIC_OPENAI_KEY,
+      dangerouslyAllowBrowser: true,
+    });
+
+    const gpt3Response = await openai.chat.completions.create({
+      messages: [
+        {
+          role: "user",
+          content: `"""${
+            inputText || input
+          }"""の派生ワードを３つの単語で教えてください。回答は３つの単語を","で区切って記述してください。`,
+        },
+      ],
+      model: "gpt-3.5-turbo",
+    });
+    const botResponse = gpt3Response.choices[0].message.content?.split(/,|、/, 3);
+    if (!botResponse) {
+      return;
+    }
+    setRelatedWords([...botResponse]);
+  };
+
+  const buttonSubmit = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const buttonText = event.currentTarget.textContent;
+    if (!buttonText) {
+      return;
+    }
+    sendToGPT(buttonText + "について教えてください");
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    await sendToGPT();
   };
 
   const sendGptMessage = useCallback(async () => {
@@ -135,38 +187,7 @@ const Chat = () => {
         top: element.scrollHeight,
       });
     }
-  }, [response, messages]);
-  //   if (!inputMessage.trim()) return;
-
-  //   const messageData = {
-  //     text: inputMessage,
-  //     sender: "user",
-  //     createdAt: serverTimestamp(),
-  //   };
-
-  //   //  メッセージをFirestoreに保存
-  //   const roomDocRef = doc(db, "rooms", selectedRoom!);
-  //   const messageCollectionRef = collection(roomDocRef, "messages");
-  //   await addDoc(messageCollectionRef, messageData);
-
-  //   setInputMessage("");
-  //   setIsLoading(true);
-
-  //   // OpenAIからの返信
-  //   const gpt3Response = await openai.chat.completions.create({
-  //     messages: [{ role: "user", content: inputMessage }],
-  //     model: "gpt-3.5-turbo",
-  //   });
-
-  //   setIsLoading(false);
-
-  //   const botResponse = gpt3Response.choices[0].message.content;
-  //   await addDoc(messageCollectionRef, {
-  //     text: botResponse,
-  //     sender: "bot",
-  //     createdAt: serverTimestamp(),
-  //   });
-  // };
+  }, [response, messages, relatedWords.length]);
 
   return (
     <div className="bg-gray-800 h-full p-4 flex flex-col">
@@ -235,17 +256,50 @@ const Chat = () => {
             </div>
           </div>
         )}
+        {relatedWords.length !== 0 && (
+          <div className="flex items-center">
+            <span className="text-white">関連ワード：</span>
+            {relatedWords.map((item, index) => (
+              <button
+                key={index}
+                className="bg-slate-700 text-white px-4 py-2 mr-2 border rounded-full"
+                onClick={buttonSubmit}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex-shrink-0 relative">
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="flex">
           <textarea
             value={input}
-            placeholder="Send a Message"
-            onChange={(e) => setInput(e.target.value)}
-            className="border-2 rounded w-full pr-10 focus:outline-none p-2 resize-none"
+            placeholder={isLoading ? "回答中..." : "メッセージを送信"}
+            onChange={handleInput}
+            className={`${
+              isLoading ? "" : "border-2"
+            } rounded w-full pr-10 p-2 focus:outline-none resize-none max-h-[10rem] font-medium`}
+            style={{ overflowY: "hidden" }}
+            ref={textAreaRef}
+            rows={1}
+            disabled={isLoading}
           ></textarea>
-          <button className="absolute inset-y-0 right-4 flex items-center" disabled={isLoading}>
-            {isLoading ? "Loading..." : <IoMdSend />}
+          <button className="absolute inset-y-0 right-1" disabled={isLoading}>
+            <div
+              className={`flex items-center justify-center ${
+                isLoading ? "" : "hover:bg-blue-100"
+              } p-2 rounded`}
+            >
+              {isLoading ? (
+                <LoadingIcons.TailSpin
+                  stroke="rgb(250, 250, 250)"
+                  style={{ width: 24, height: 24 }}
+                />
+              ) : (
+                <IoMdSend className="text-blue-600" style={{ width: 24, height: 24 }} />
+              )}
+            </div>
           </button>
         </form>
       </div>
