@@ -21,10 +21,11 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { materialDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import OpenAI from "openai";
 import LoadingIcons from "react-loading-icons";
+import { ChatGPTAgent, ChatGPTMessage } from "@/utils/open-ai-streaming";
 
 type Message = {
-  text: string;
-  sender: string;
+  content: ChatGPTAgent;
+  role: string;
   createdAt: string;
 };
 
@@ -55,8 +56,8 @@ const Chat = () => {
     setRelatedWords([]);
 
     const messageData = {
-      text: inputText || input,
-      sender: "user",
+      content: inputText || input,
+      role: "user",
       createdAt: serverTimestamp(),
     };
 
@@ -65,16 +66,25 @@ const Chat = () => {
     const messageCollectionRef = collection(roomDocRef, "messages");
     await addDoc(messageCollectionRef, messageData);
 
+    const sendMessages: ChatGPTMessage[] = messages
+      .map((item) => {
+        return { role: item.role as ChatGPTAgent, content: item.content };
+      })
+      .slice(messages.length - 5);
+
+    sendMessages.push({
+      role: "user",
+      content: `次のテキストに対する回答をマークダウン形式で教えてください。回答という文字は表示しないでください。オウムがえしはしないで下さい。テキスト:"""${
+        inputText || input
+      }"""`,
+    });
+
     const res = await fetch("/api/response", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        prompt: `次のテキストに対する回答をマークダウン形式で教えてください。回答という文字は表示しないでください。オウムがえしはしないで下さい。テキスト:"""${
-          inputText || input
-        }"""`,
-      }),
+      body: JSON.stringify(sendMessages),
     });
 
     setInput("");
@@ -107,14 +117,17 @@ const Chat = () => {
       messages: [
         {
           role: "user",
-          content: `"""${
+          content: `以下の文章に対して、10文字以内で質問を3つ答えてください。ただし、3つの質問は"""["質問", "質問", "質問"]"""のような配列の形式で回答してください。"""${
             inputText || input
-          }"""の派生ワードを３つの単語で教えてください。回答は３つの単語を","で区切って記述してください。`,
+          }"""`,
         },
       ],
       model: "gpt-3.5-turbo",
     });
-    const botResponse = gpt3Response.choices[0].message.content?.split(/,|、/, 3);
+    const regex = /\[|\]|"|'/g;
+    const botResponse = gpt3Response.choices[0].message.content
+      ?.replace(regex, "")
+      .split(/,|、/, 3);
     if (!botResponse) {
       return;
     }
@@ -126,7 +139,7 @@ const Chat = () => {
     if (!buttonText) {
       return;
     }
-    sendToGPT(buttonText + "について教えてください");
+    sendToGPT(buttonText);
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -139,8 +152,8 @@ const Chat = () => {
     const messageCollectionRef = collection(roomDocRef, "messages");
 
     await addDoc(messageCollectionRef, {
-      text: response,
-      sender: "bot",
+      content: response,
+      role: "assistant",
       createdAt: serverTimestamp(),
     });
 
@@ -195,11 +208,11 @@ const Chat = () => {
       <div className="flex-grow overflow-y-auto mb-4 " ref={scrollDiv}>
         {messages.map(
           (message, index) =>
-            message.text !== response && (
-              <div key={index} className={message.sender === "user" ? "text-right" : "text-left"}>
+            message.content !== response && (
+              <div key={index} className={message.role === "user" ? "text-right" : "text-left"}>
                 <div
                   className={
-                    message.sender === "user"
+                    message.role === "user"
                       ? "bg-gray-900 inline-block rounded px-4 py-4 mb-2"
                       : "bg-gray-700 inline-block rounded px-4 py-4 mb-2"
                   }
@@ -237,7 +250,7 @@ const Chat = () => {
                         },
                       }}
                     >
-                      {message.text}
+                      {message.content}
                     </ReactMarkdown>
                   </div>
                 </div>
@@ -258,7 +271,6 @@ const Chat = () => {
         )}
         {relatedWords.length !== 0 && (
           <div className="flex items-center">
-            <span className="text-white">関連ワード：</span>
             {relatedWords.map((item, index) => (
               <button
                 key={index}

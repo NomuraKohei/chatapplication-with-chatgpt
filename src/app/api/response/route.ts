@@ -1,19 +1,19 @@
 export const runtime = 'edge';
 
-import { OpenAIStream, OpenAIStreamPayload } from "../../../utils/open-ai-streaming";
+import { ChatGPTMessage, OpenAIStream, OpenAIStreamPayload } from "../../../utils/open-ai-streaming";
 
 if (!process.env.NEXT_PUBLIC_OPENAI_KEY) {
   throw new Error("Missing OpenAI API KEY")
 }
 
 export const POST = async (req: Request) => {
-  const { prompt } = (await req.json()) as { prompt: string };
+  const sendMessages = (await req.json()) as ChatGPTMessage[];
 
-  if (!prompt) return new Response("Missing prompt", { status: 400 });
+  if (!sendMessages) return new Response("Missing prompt", { status: 400 });
 
   const payload: OpenAIStreamPayload = {
     model: "gpt-3.5-turbo",
-    messages: [{ role: "user", content: prompt }],
+    messages: sendMessages,
     temperature: 0.7,
     top_p: 1,
     frequency_penalty: 0,
