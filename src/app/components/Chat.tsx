@@ -74,9 +74,7 @@ const Chat = () => {
 
     sendMessages.push({
       role: "user",
-      content: `次のテキストに対する回答をマークダウン形式で教えてください。回答という文字は表示しないでください。オウムがえしはしないで下さい。テキスト:"""${
-        inputText || input
-      }"""`,
+      content: inputText || input,
     });
 
     const res = await fetch("/api/response", {
@@ -99,12 +97,14 @@ const Chat = () => {
     const reader = data.getReader();
     const decoder = new TextDecoder();
     let done = false;
+    let answer = "";
 
     while (!done) {
       const { value, done: doneReading } = await reader.read();
       done = doneReading;
       const chunkValue = decoder.decode(value);
       setResponse((prev) => prev + chunkValue);
+      answer = answer + chunkValue;
     }
     setIsDone(true);
 
@@ -113,25 +113,32 @@ const Chat = () => {
       dangerouslyAllowBrowser: true,
     });
 
-    const gpt3Response = await openai.chat.completions.create({
+    const completion = await openai.chat.completions.create({
       messages: [
         {
+          role: "system",
+          content: `あなたはテキストを整形するアシスタントです。
+          与えられた文字列に対して、JSON形式でパースしてください。
+          JSONのキーはquestionとしてください。
+          
+          questionのバリューは配列で、配列内には20文字以内の質問文が3つ入ります。`,
+        },
+        {
           role: "user",
-          content: `以下の文章に対して、10文字以内で質問を3つ答えてください。ただし、3つの質問は"""["質問", "質問", "質問"]"""のような配列の形式で回答してください。"""${
-            inputText || input
-          }"""`,
+          content: answer,
         },
       ],
-      model: "gpt-3.5-turbo",
+      model: "gpt-4-1106-preview",
+      // @ts-ignore
+      response_format: {
+        type: "json_object",
+      },
     });
-    const regex = /\[|\]|"|'/g;
-    const botResponse = gpt3Response.choices[0].message.content
-      ?.replace(regex, "")
-      .split(/,|、/, 3);
-    if (!botResponse) {
-      return;
+    const searchWords = completion.choices[0].message.content;
+    if (searchWords && "question" in JSON.parse(searchWords)) {
+      const questionArray = JSON.parse(searchWords).question;
+      setRelatedWords([...questionArray]);
     }
-    setRelatedWords([...botResponse]);
   };
 
   const buttonSubmit = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -270,11 +277,11 @@ const Chat = () => {
           </div>
         )}
         {relatedWords.length !== 0 && (
-          <div className="flex items-center">
+          <div className="flex w-full overflow-x-auto">
             {relatedWords.map((item, index) => (
               <button
                 key={index}
-                className="bg-slate-700 text-white px-4 py-2 mr-2 border rounded-full"
+                className="bg-slate-700 text-white px-4 py-2 mr-2 border rounded-full flex-none"
                 onClick={buttonSubmit}
               >
                 {item}
