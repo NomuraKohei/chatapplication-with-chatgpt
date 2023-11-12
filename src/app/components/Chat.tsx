@@ -128,7 +128,7 @@ const Chat = () => {
           content: answer,
         },
       ],
-      model: "gpt-4-1106-preview",
+      model: "gpt-3.5-turbo-1106",
       // @ts-ignore
       response_format: {
         type: "json_object",
